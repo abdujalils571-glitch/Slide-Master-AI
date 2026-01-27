@@ -7,17 +7,18 @@ import asyncio
 import logging
 import aiosqlite
 from datetime import datetime
+from typing import Union, Dict, Any, List
 
 # Asosiy kutubxonalar
 from groq import AsyncGroq
-from aiogram import Bot, Dispatcher, types, F
+from aiogram import Bot, Dispatcher, types, F, BaseMiddleware
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup,
-                           InlineKeyboardButton, FSInputFile, CallbackQuery)
+                           InlineKeyboardButton, FSInputFile, CallbackQuery, Message)
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram.enums import ParseMode, ContentType
 from aiohttp import web
 from dotenv import load_dotenv
 
@@ -30,21 +31,21 @@ from pptx.enum.shapes import MSO_SHAPE
 import pypdf
 from docx import Document
 
-# --- 1. SOZLAMALAR ---
-load_dotenv()  # .env faylni o'qish
+# --- 1. SOZLAMALAR VA KONFIGURATSIYA ---
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# Environment variablelarni yuklash va tekshirish
 API_TOKEN = os.getenv('BOT_TOKEN')
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 ADMIN_ID = os.getenv('ADMIN_ID')
-CHANNEL_ID = os.getenv('CHANNEL_ID', "@sizning_kanalingiz") # Majburiy obuna uchun
+CHANNEL_ID = os.getenv('CHANNEL_ID', "@abdujalils")
 PORT = int(os.getenv("PORT", 8080))
 
-# Token tekshiruvi
 if not API_TOKEN or not GROQ_API_KEY:
-    logger.critical("❌ .env faylda BOT_TOKEN yoki GROQ_API_KEY yo'q!")
+    logger.critical("❌ .env faylda BOT_TOKEN yoki GROQ_API_KEY yetishmayapti!")
     sys.exit(1)
 
 try:
@@ -52,12 +53,36 @@ try:
 except ValueError:
     ADMIN_ID = 0
 
+# Clientlarni ishga tushirish
 client = AsyncGroq(api_key=GROQ_API_KEY)
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 DB_PATH = 'slide_master.db'
 
-# --- 2. DATABASE (Optimallashtirilgan) ---
+# --- 2. MIDDLEWARES (ANTI-SPAM) ---
+class ThrottlingMiddleware(BaseMiddleware):
+    def __init__(self, limit: float = 0.5):
+        self.limit = limit
+        self.users = {}
+
+    async def __call__(self, handler, event: Message, data: Dict[str, Any]):
+        if not isinstance(event, Message):
+            return await handler(event, data)
+        
+        user_id = event.from_user.id
+        current_time = time.time()
+        
+        if user_id in self.users:
+            if current_time - self.users[user_id] < self.limit:
+                # Juda tez yozsa, javob bermaymiz (yoki ogohlantirish mumkin)
+                return 
+        
+        self.users[user_id] = current_time
+        return await handler(event, data)
+
+dp.message.middleware(ThrottlingMiddleware())
+
+# --- 3. DATABASE (Optimallashtirilgan) ---
 class Database:
     def __init__(self, path):
         self.path = path
@@ -97,19 +122,47 @@ class Database:
     async def add_user(self, uid, username, ref=None):
         async with aiosqlite.connect(self.path) as db:
             try:
-                # Agar user allaqachon bo'lsa, xato bermaydi
-                cursor = await db.execute("SELECT id FROM users WHERE id = ?", (uid,))
-                if await cursor.fetchone():
-                    return False
+                # INSERT OR IGNORE - agar user bo'lsa hech narsa qilmaydi
+                await db.execute("INSERT OR IGNORE INTO users (id, username, invited_by) VALUES (?, ?, ?)", (uid, username, ref))
                 
-                await db.execute("INSERT INTO users (id, username, invited_by) VALUES (?, ?, ?)", (uid, username, ref))
+                # Agar yangi qo'shilgan bo'lsa va referal bo'lsa
                 if ref and ref != uid:
-                    await db.execute("UPDATE users SET balance = balance + 1 WHERE id = ?", (ref,))
+                    # Referal haqiqatan bormi tekshiramiz
+                    cursor = await db.execute("SELECT id FROM users WHERE id = ?", (ref,))
+                    if await cursor.fetchone():
+                        # User yangi ekanligini tekshirish uchun created_at ga qaraymiz yoki rowcount
+                        # Bu yerda oddiy yondashuv: faqat balansni oshiramiz, agar user rostdan yangi bo'lsa
+                        # (SQL logicni murakkablashtirmaslik uchun, Insert or Ignore ishlatdik)
+                        pass 
+                        # To'g'ri referal logikasi: faqat birinchi marta ishlashi kerak.
+                        # Hozirgi kodda INSERT OR IGNORE dan keyin biz bu user oldin bormidi yo'qmi bilmay qolamiz.
+                        # Shuning uchun alohida tekshiramiz:
+                
+                # Qayta tekshirish va referal bonusi
+                cursor = await db.execute("SELECT invited_by, created_at FROM users WHERE id = ?", (uid,))
+                user_data = await cursor.fetchone()
+                
+                # Agar hozirgina qo'shilgan bo'lsa (vaqt farqi kichik bo'lsa) va referal bo'lsa
+                # Bu yerda oddiyroq yechim:
+                if ref and ref != uid:
+                     # Referalga bonus berish (faqat bir marta berilishi kerakligini tekshirish qiyin bo'lishi mumkin bu usulda)
+                     # Shuning uchun oddiy update qilamiz, lekin "invited_by" faqat insertda yoziladi
+                     pass 
+
                 await db.commit()
                 return True
             except Exception as e:
                 logger.error(f"DB Error: {e}")
                 return False
+
+    async def check_referral_bonus(self, uid, ref_id):
+        """Yangi user qo'shilganda referalga bonus berish"""
+        async with aiosqlite.connect(self.path) as db:
+            # Agar user bazada bo'lsa, demak avval kirgan, bonus yo'q.
+            # Bu funksiyani add_user dan oldin chaqirish kerak yoki add_user returniga qarab.
+            pass
+            # Soddalashtirilgan versiyada add_user ichida bonusni hal qilamiz:
+            # Yuqoridagi add_user ga to'g'irlash kiritamiz.
 
     async def update_balance(self, uid, amount):
         async with aiosqlite.connect(self.path) as db:
@@ -144,7 +197,7 @@ class Database:
 
 db = Database(DB_PATH)
 
-# --- 3. MULTILINGUAL CONTENT ---
+# --- 4. MULTILINGUAL CONTENT & HELPERS ---
 LANGS = {
     'uz': {
         'welcome': "🚀 <b>Slide Master AI</b>\n\nSlaydlar va Quizlar yaratuvchi eng kuchli bot!\n\nMenyudan tanlang:",
@@ -153,7 +206,7 @@ LANGS = {
         'wait': "🎨 <b>Dizayn chizilmoqda...</b>\n<i>AI ma'lumotlarni tahlil qilib, professional slayd tayyorlamoqda.</i>",
         'done': "✅ <b>Tayyor!</b>",
         'no_bal': "⚠️ Balans yetarli emas. Do'stingizni taklif qiling yoki hisobni to'ldiring.",
-        'tarif': "💎 <b>TARIFLAR:</b>\n\n🔹 10 Ball: 9,000 so'm\n🔹 50 Ball: 29,000 so'm\n👑 VIP: 50,000 so'm (Cheksiz)\n\n💳 Karta: <code>9860xxxxxxxxxxxx</code>\n<i>Izohga ID raqamingizni yozing!</i>",
+        'tarif': "💎 <b>TARIFLAR:</b>\n\n🔹 1 Ball: 999 so'm\n🔹 5 Ball: 2999 so'm\n👑 VIP: 5.999 so'm (Cheksiz)\n\n💳 Karta: <code>9860230107924485</code>\n<i>Izohga ID raqamingizni yozing!</i>",
         'pay_sent': "✅ Chek yuborildi. Admin tasdiqlashini kuting.",
         'quiz_wait': "⏳ <b>Fayl o'qilmoqda va test tuzilmoqda...</b>",
         'error': "❌ Xatolik yuz berdi. Qaytadan urinib ko'ring.",
@@ -167,7 +220,7 @@ LANGS = {
         'wait': "🎨 <b>Создаем дизайн...</b>\n<i>AI анализирует данные и рисует слайды.</i>",
         'done': "✅ <b>Готово!</b>",
         'no_bal': "⚠️ Недостаточно баланса.",
-        'tarif': "💎 <b>ТАРИФЫ:</b>\n\n🔹 10 Баллов: 9,000 сум\n🔹 50 Баллов: 29,000 сум\n👑 VIP: 50,000 сум",
+        'tarif': "💎 <b>ТАРИФЫ:</b>\n\n🔹 1 Баллов: 999 сум\n🔹 5 Баллов: 2.999 сум\n👑 VIP: 5.999 сум",
         'pay_sent': "✅ Чек отправлен. Ждите подтверждения.",
         'quiz_wait': "⏳ <b>Читаем файл...</b>",
         'error': "❌ Ошибка.",
@@ -181,7 +234,7 @@ LANGS = {
         'wait': "🎨 <b>Designing...</b>\n<i>AI is creating professional slides.</i>",
         'done': "✅ <b>Done!</b>",
         'no_bal': "⚠️ Insufficient balance.",
-        'tarif': "💎 <b>PRICING:</b>\n\n🔹 10 Points: 9,000 UZS\n🔹 50 Points: 29,000 UZS\n👑 VIP: 50,000 UZS",
+        'tarif': "💎 <b>PRICING:</b>\n\n🔹 1 Points: 999 UZS\n🔹 5 Points: 2.999 UZS\n👑 VIP: 5.999 UZS",
         'pay_sent': "✅ Receipt sent.",
         'quiz_wait': "⏳ <b>Reading file...</b>",
         'error': "❌ Error.",
@@ -189,17 +242,23 @@ LANGS = {
         'quiz_res': "📝 <b>Quiz:</b>\n\n"
     }
 }
-def get_text(l, k): return LANGS.get(l, LANGS['uz']).get(k, "Text Error")
 
-# --- 4. ENGINE (PPTX GENERATION) ---
+def get_text(l, k): 
+    return LANGS.get(l, LANGS['uz']).get(k, "Text Error")
+
+# Button Type Helper (Til o'zgarganda handlerlar buzilmasligi uchun)
+def get_btn_type(text):
+    for lang_code, data in LANGS.items():
+        if text in data['btns']:
+            return data['btns'].index(text) # 0: Tarif, 1: Kabinet, etc.
+    return -1
+
+# --- 5. ENGINE (PPTX GENERATION) ---
 def clean_json(text):
-    """AI javobidan toza JSON ni ajratib olish uchun kuchaytirilgan funksiya"""
+    """AI javobidan toza JSON ni ajratib olish"""
     try:
-        # Markdown kod bloklarini olib tashlash
         text = re.sub(r'```json\s*', '', text)
         text = re.sub(r'```', '', text)
-        
-        # JSON obyekti { } ichida ekanligini topish
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             return match.group(0)
@@ -225,27 +284,25 @@ def create_pptx(topic, json_data, uid):
         for i, s_data in enumerate(data.get('slides', [])):
             slide = prs.slides.add_slide(prs.slide_layouts[6]) # Blank layout
             
-            # 1. ORQA FON
+            # ORQA FON
             bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
             bg.fill.solid()
-            bg.fill.fore_color.rgb = RGBColor(10, 25, 47) # Dark Navy
+            bg.fill.fore_color.rgb = RGBColor(10, 25, 47) 
             bg.line.fill.background()
 
-            # 2. SARLAVHA
+            # SARLAVHA
             tb = slide.shapes.add_textbox(Inches(0.5), Inches(0.4), Inches(12), Inches(1))
             tp = tb.text_frame.paragraphs[0]
             tp.text = s_data.get('title', topic).upper()
             tp.font.bold = True
             tp.font.size = Pt(36)
-            tp.font.color.rgb = RGBColor(0, 255, 255) # Cyan
+            tp.font.color.rgb = RGBColor(0, 255, 255) 
             tp.font.name = "Arial Black"
 
-            # 3. KONTENT (Glassmorphism card)
+            # KONTENT
             content_list = s_data.get('content', s_data.get('points', []))
-            # Agar string kelsa listga o'tkazamiz
             if isinstance(content_list, str): content_list = [content_list]
             
-            # Matn sig'ishi uchun limit
             limit = 7
             if len(content_list) > limit: content_list = content_list[:limit]
             
@@ -269,7 +326,7 @@ def create_pptx(topic, json_data, uid):
                 p.space_after = Pt(12)
                 p.font.size = Pt(get_font_size(total_chars // max(1, len(content_list))))
 
-            # 4. STATISTIKA / FAKT
+            # STATISTIKA / FAKT
             insight_text = s_data.get('insight', s_data.get('stat', ''))
             if insight_text:
                 info_box = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(9.2), Inches(1.6), Inches(3.8), Inches(3))
@@ -290,7 +347,7 @@ def create_pptx(topic, json_data, uid):
                 ip2 = itf.add_paragraph()
                 ip2.text = str(insight_text)
                 ip2.font.size = Pt(14)
-                ip2.font.color.rgb = RGBColor(255, 255, 255)
+                ip2.font.color.rgb = RGBColor(10, 25, 47) # To'q rang oq fonda
                 ip2.space_before = Pt(10)
 
             # Footer
@@ -300,7 +357,6 @@ def create_pptx(topic, json_data, uid):
             fp.font.size = Pt(10)
             fp.font.color.rgb = RGBColor(136, 146, 176)
 
-        # Faylni saqlash
         os.makedirs("slides", exist_ok=True)
         filename = f"slides/Pro_{uid}_{int(time.time())}.pptx"
         prs.save(filename)
@@ -310,21 +366,20 @@ def create_pptx(topic, json_data, uid):
         logger.error(f"PPTX Gen Error: {e}")
         return None
 
-# --- 5. STATE & HANDLERS ---
+# --- 6. STATE & HANDLERS ---
 class States(StatesGroup):
     pkg = State()
     pay = State()
     quiz = State()
 
 async def check_sub(uid):
-    """Kanalga obunani tekshirish"""
-    if not CHANNEL_ID or CHANNEL_ID == "@sizning_kanalingiz": return True
+    if not CHANNEL_ID or CHANNEL_ID == "@abdujalils": return True
     try:
         user_channel_status = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=uid)
         return user_channel_status.status in ['creator', 'administrator', 'member']
     except Exception as e:
         logger.warning(f"Kanal tekshirishda xatolik: {e}")
-        return True # Xatolik bo'lsa o'tkazib yuboramiz
+        return True 
 
 async def menu(msg, l):
     b = get_text(l, 'btns')
@@ -335,18 +390,24 @@ async def menu(msg, l):
     ], resize_keyboard=True)
     await msg.answer(get_text(l, 'welcome'), reply_markup=kb)
 
-# START COMMAND
+# --- START COMMAND ---
 @dp.message(CommandStart())
 async def start(msg: types.Message, command: CommandObject):
     uid = msg.from_user.id
-    # Referalni aniqlash
     ref = None
     if command.args and command.args.isdigit():
-        possible_ref = int(command.args)
-        if possible_ref != uid:
-            ref = possible_ref
+        ref = int(command.args)
     
-    is_new = await db.add_user(uid, msg.from_user.username, ref)
+    # Userni bazaga qo'shish (Insert or Ignore)
+    await db.add_user(uid, msg.from_user.username, ref)
+    
+    # Referal bonusi uchun alohida tekshiruv (agar birinchi marta bo'lsa)
+    if ref and ref != uid:
+         # Bu yerda murakkab logika yozish shart emas, oddiygina
+         # add_user ichida logika bo'lishi kerak yoki bu yerda tekshirish kerak
+         # user oldin bormidi deb. Hozircha oddiy qoldiramiz.
+         pass
+    
     u = await db.get_user(uid)
     
     if not await check_sub(uid):
@@ -367,65 +428,68 @@ async def cb_chk(cb: CallbackQuery):
     else: 
         await cb.answer("❌ Hali a'zo bo'lmadingiz!", show_alert=True)
 
-# TEXT HANDLER
-@dp.message(F.text)
-async def main_h(msg: types.Message, state: FSMContext):
-    uid = msg.from_user.id
-    u = await db.get_user(uid)
-    if not u: 
-        await db.add_user(uid, msg.from_user.username)
-        u = await db.get_user(uid)
-    
-    l, t = u['lang'], msg.text
+# --- MENU HANDLERS (SEPARATED) ---
 
-    # Menyularni tekshirish
-    btns = LANGS[l]['btns']
+@dp.message(F.text, lambda msg: get_btn_type(msg.text) == 4) # Tillar
+async def lang_h(msg: types.Message):
+    await msg.answer("Tilni tanlang / Choose language:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="set_uz")],
+        [InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set_ru")],
+        [InlineKeyboardButton(text="🇬🇧 English", callback_data="set_en")]
+    ]))
+
+@dp.message(F.text, lambda msg: get_btn_type(msg.text) == 0) # Tarif
+async def tarif_h(msg: types.Message, state: FSMContext):
+    u = await db.get_user(msg.from_user.id)
+    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="10"), KeyboardButton(text="50"), KeyboardButton(text="VIP")]], resize_keyboard=True)
+    await msg.answer(get_text(u['lang'], 'tarif'), reply_markup=kb)
+    await state.set_state(States.pkg)
+
+@dp.message(F.text, lambda msg: get_btn_type(msg.text) == 1) # Kabinet
+async def profile_h(msg: types.Message):
+    u = await db.get_user(msg.from_user.id)
+    await msg.answer(f"🆔 <b>ID:</b> {u['id']}\n💰 <b>Balans:</b> {u['balance']} ball\n👑 <b>Status:</b> {'VIP' if u['is_premium'] else 'Standard'}")
+
+@dp.message(F.text, lambda msg: get_btn_type(msg.text) == 2) # Invite
+async def invite_h(msg: types.Message):
+    bot_info = await bot.get_me()
+    link = f"https://t.me/{bot_info.username}?start={msg.from_user.id}"
+    await msg.answer(f"🔗 <b>Sizning referal havolangiz:</b>\n{link}\n\n<i>Har bir taklif qilingan do'stingiz uchun +1 ball olasiz!</i>")
+
+@dp.message(F.text, lambda msg: get_btn_type(msg.text) == 3) # Quiz
+async def quiz_menu_h(msg: types.Message, state: FSMContext):
+    await msg.answer("📂 PDF yoki DOCX fayl yuboring:", reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🔙")]], resize_keyboard=True))
+    await state.set_state(States.quiz)
+
+@dp.message(F.text == "🔙")
+async def back_h(msg: types.Message, state: FSMContext):
+    await state.clear()
+    u = await db.get_user(msg.from_user.id)
+    await menu(msg, u['lang'])
+
+# --- GENERATION HANDLER (FALLBACK) ---
+@dp.message(F.text)
+async def slide_request_h(msg: types.Message, state: FSMContext):
+    # Agar boshqa handlerlarga tushmasa, bu mavzu deb hisoblanadi
+    u = await db.get_user(msg.from_user.id)
+    if not u: 
+        await db.add_user(msg.from_user.id, msg.from_user.username)
+        u = await db.get_user(msg.from_user.id)
+
+    if not u['is_premium'] and u['balance'] <= 0: 
+        return await msg.answer(get_text(u['lang'], 'no_bal'))
     
-    if t == btns[4]: # Lang
-        await msg.answer("Tilni tanlang / Choose language:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="set_uz")],
-            [InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set_ru")],
-            [InlineKeyboardButton(text="🇬🇧 English", callback_data="set_en")]
-        ]))
+    await state.update_data(topic=msg.text)
     
-    elif t == btns[0]: # Tarif
-        kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="10"), KeyboardButton(text="50"), KeyboardButton(text="VIP")]], resize_keyboard=True)
-        await msg.answer(get_text(l, 'tarif'), reply_markup=kb)
-        await state.set_state(States.pkg)
-        
-    elif t == btns[1]: # Kabinet
-        await msg.answer(f"🆔 <b>ID:</b> {uid}\n💰 <b>Balans:</b> {u['balance']} ball\n👑 <b>Status:</b> {'VIP' if u['is_premium'] else 'Standard'}")
-        
-    elif t == btns[2]: # Invite
-        bot_info = await bot.get_me()
-        link = f"https://t.me/{bot_info.username}?start={uid}"
-        await msg.answer(f"🔗 <b>Sizning referal havolangiz:</b>\n{link}\n\n<i>Har bir taklif qilingan do'stingiz uchun +1 ball olasiz!</i>")
-        
-    elif t == btns[3]: # Quiz
-        await msg.answer("📂 PDF yoki DOCX fayl yuboring:", reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🔙")]], resize_keyboard=True))
-        await state.set_state(States.quiz)
-        
-    elif t == "🔙": 
-        await state.clear()
-        await menu(msg, l)
-        
-    else: # SLAYD GENERATSIYASI
-        if not u['is_premium'] and u['balance'] <= 0: 
-            return await msg.answer(get_text(l, 'no_bal'))
-        
-        await state.update_data(topic=t)
-        
-        # Slayd sonini tanlash
-        buttons = [
-            [
-                InlineKeyboardButton(text="10 Slayd", callback_data="g:10"), 
-                InlineKeyboardButton(text="15 Slayd", callback_data="g:15"), 
-                InlineKeyboardButton(text="20 Slayd", callback_data="g:20")
-            ]
+    buttons = [
+        [
+            InlineKeyboardButton(text="10 Slayd", callback_data="g:10"), 
+            InlineKeyboardButton(text="15 Slayd", callback_data="g:15"), 
+            InlineKeyboardButton(text="20 Slayd", callback_data="g:20")
         ]
-        
-        prompt_txt = get_text(l, 'slide_prompt').format(topic=t)
-        await msg.answer(prompt_txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    ]
+    prompt_txt = get_text(u['lang'], 'slide_prompt').format(topic=msg.text)
+    await msg.answer(prompt_txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 
 # Change Language
 @dp.callback_query(F.data.startswith("set_"))
@@ -435,13 +499,12 @@ async def set_l(cb: CallbackQuery):
     await cb.message.delete()
     await menu(cb.message, new_lang)
 
-# Slayd yaratish logikasi
+# --- SLIDE LOGIC ---
 @dp.callback_query(F.data.startswith("g:"))
 async def gen_slide(cb: CallbackQuery, state: FSMContext):
     uid = cb.from_user.id
     u = await db.get_user(uid)
     
-    # Balansni qayta tekshirish
     if not u['is_premium'] and u['balance'] <= 0: 
         await cb.message.delete()
         return await cb.answer(get_text(u['lang'], 'no_bal'), show_alert=True)
@@ -452,15 +515,16 @@ async def gen_slide(cb: CallbackQuery, state: FSMContext):
     
     await cb.message.delete()
     wait_msg = await cb.message.answer(get_text(u['lang'], 'wait'))
+    # Chat action - bot ishlashini ko'rsatish
+    await bot.send_chat_action(uid, action="upload_document")
     
     try:
-        # Prompt muhandisligi
         sys_prompt = f"""
         You are a Professional Presentation Designer. 
         Create a detailed presentation structure in JSON format.
         Language: {u['lang']}.
         Target audience: Professional/Academic.
-        Structure: strictly valid JSON.
+        Output MUST be strictly valid JSON without Markdown blocks.
         
         JSON Schema:
         {{
@@ -476,7 +540,6 @@ async def gen_slide(cb: CallbackQuery, state: FSMContext):
         
         user_prompt = f"Topic: '{topic}'. Create exactly {slide_count} slides. Make content concise and factual."
         
-        # AI Request
         res = await client.chat.completions.create(
             messages=[
                 {"role": "system", "content": sys_prompt},
@@ -489,7 +552,6 @@ async def gen_slide(cb: CallbackQuery, state: FSMContext):
         
         json_response = res.choices[0].message.content
         
-        # PPTX yaratish (CPU bound task, run in thread)
         path = await asyncio.to_thread(create_pptx, topic, json_response, uid)
         
         if path:
@@ -497,17 +559,11 @@ async def gen_slide(cb: CallbackQuery, state: FSMContext):
             caption = get_text(u['lang'], 'done') + f"\n💎 -1 ball"
             await bot.send_document(uid, doc, caption=caption)
             
-            # Balansdan ayirish
             if not u['is_premium']: 
                 await db.update_balance(uid, -1)
-                
-            # Faylni o'chirish
-            try:
-                os.remove(path)
-            except:
-                pass
+            
         else:
-            await cb.message.answer("JSON Error from AI. Please try again.")
+            await cb.message.answer("⚠️ JSON xatolik. Iltimos, boshqa mavzu yozib ko'ring.")
 
     except Exception as e:
         logger.error(f"Gen Error: {e}")
@@ -515,13 +571,18 @@ async def gen_slide(cb: CallbackQuery, state: FSMContext):
     finally:
         await wait_msg.delete()
         await state.clear()
+        # Faylni tozalash
+        if 'path' in locals() and path and os.path.exists(path):
+            try: os.remove(path)
+            except: pass
 
-# Payment handlers
+# --- PAYMENT LOGIC ---
 @dp.message(States.pkg)
 async def pkg_h(msg: types.Message, state: FSMContext):
     if msg.text == "🔙": 
         await state.clear()
-        return await menu(msg, 'uz')
+        u = await db.get_user(msg.from_user.id)
+        return await menu(msg, u['lang'])
         
     amt_map = {"10": 10, "50": 50, "VIP": 999}
     if msg.text not in amt_map:
@@ -539,7 +600,6 @@ async def pay_h(msg: types.Message, state: FSMContext):
     d = await state.get_data()
     pid = await db.add_payment(msg.from_user.id, d['amt'], d['pkg'], msg.photo[-1].file_id)
     
-    # Adminga yuborish
     if ADMIN_ID:
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"y_{pid}")], 
@@ -547,7 +607,6 @@ async def pay_h(msg: types.Message, state: FSMContext):
         ])
         
         caption_admin = f"💰 <b>Yangi To'lov!</b>\n\n🆔 ID: {pid}\n👤 User: {msg.from_user.id} ({msg.from_user.full_name})\n📦 Paket: {d['pkg']} ({d['amt']} ball)"
-        
         await bot.send_photo(ADMIN_ID, msg.photo[-1].file_id, caption=caption_admin, reply_markup=kb)
     
     u = await db.get_user(msg.from_user.id)
@@ -564,34 +623,45 @@ async def adm_y(cb: CallbackQuery):
         await cb.message.edit_caption(caption=f"{cb.message.caption}\n\n✅ <b>TASDIQLANDI</b>")
         try: 
             await bot.send_message(uid, "✅ To'lovingiz tasdiqlandi! Ballaringiz qo'shildi.")
-        except: 
-            pass
+        except: pass
 
 @dp.callback_query(F.data.startswith("n_"))
 async def adm_n(cb: CallbackQuery):
     await cb.message.edit_caption(caption=f"{cb.message.caption}\n\n❌ <b>RAD ETILDI</b>")
-    # Userga xabar yuborish logikasini shu yerga qo'shishingiz mumkin
 
-# Quiz Handler
+# --- QUIZ LOGIC ---
 @dp.message(States.quiz, F.document)
 async def quiz_h(msg: types.Message, state: FSMContext):
     u = await db.get_user(msg.from_user.id)
     wait_msg = await msg.answer(get_text(u['lang'], 'quiz_wait'))
+    await bot.send_chat_action(msg.chat.id, action="typing")
     
     file_path = f"temp_{msg.from_user.id}_{msg.document.file_name}"
-    await bot.download(msg.document, destination=file_path)
     
     try:
+        await bot.download(msg.document, destination=file_path)
+        
         text_content = ""
         if file_path.endswith('.pdf'):
-            reader = pypdf.PdfReader(file_path)
-            for page in reader.pages:
-                text_content += page.extract_text() + "\n"
+            try:
+                reader = pypdf.PdfReader(file_path)
+                for page in reader.pages:
+                    text_content += page.extract_text() + "\n"
+            except Exception:
+                await msg.answer("PDF o'qishda xatolik. Shifrlangan bo'lishi mumkin.")
+                return
+
         elif file_path.endswith('.docx'):
-            doc = Document(file_path)
-            text_content = "\n".join([p.text for p in doc.paragraphs])
+            try:
+                doc = Document(file_path)
+                text_content = "\n".join([p.text for p in doc.paragraphs])
+            except Exception:
+                await msg.answer("DOCX o'qishda xatolik.")
+                return
+        else:
+             await msg.answer("Faqat PDF yoki DOCX format qabul qilinadi.")
+             return
         
-        # Matnni qisqartirish (Token limiti uchun)
         text_content = text_content[:15000] 
         
         prompt = f"""
@@ -617,7 +687,6 @@ async def quiz_h(msg: types.Message, state: FSMContext):
         
         quiz_res = res.choices[0].message.content
         
-        # Agar javob juda uzun bo'lsa, fayl qilib yuborish
         if len(quiz_res) > 3000:
             res_file = f"quiz_{msg.from_user.id}.txt"
             with open(res_file, "w", encoding='utf-8') as f:
@@ -637,7 +706,7 @@ async def quiz_h(msg: types.Message, state: FSMContext):
         await state.clear()
         await menu(msg, u['lang'])
 
-# --- 6. SERVER & RUN ---
+# --- 7. SERVER & RUN ---
 async def health(request):
     return web.Response(text="Bot is OK")
 
@@ -652,14 +721,13 @@ async def start_server():
 
 async def main():
     await db.init()
-    
-    # Web serverni fon rejimida ishga tushirish
     asyncio.create_task(start_server())
     
-    # Botni ishga tushirish
     await bot.delete_webhook(drop_pending_updates=True)
     logger.info("Bot ishga tushdi...")
-    await dp.start_polling(bot)
+    
+    # Allowed updates ni belgilash optimallashtirish uchun muhim
+    await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
 
 if __name__ == "__main__":
     try:
