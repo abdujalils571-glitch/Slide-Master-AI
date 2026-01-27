@@ -1,8 +1,8 @@
-aiogram
-groq
-python-pptx
-aiosqlite
-aiohttp
-python-dotenv
-pypdf
-python-docx
+aiogram==3.0.0
+aiosqlite==0.17.0
+groq==0.1.0
+python-pptx==0.6.18
+pypdf==2.0.0
+python-docx==0.8.11
+aiohttp==3.8.1
+python-dotenv==0.19.2
