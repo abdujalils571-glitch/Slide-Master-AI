@@ -1,7 +1,7 @@
-aiogram
+aiogram>=3.0.0
 groq
 aiosqlite
 python-pptx
-aiohttp
 pypdf
 python-docx
+aiohttp
