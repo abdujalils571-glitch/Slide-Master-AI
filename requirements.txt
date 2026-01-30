@@ -1,8 +1,6 @@
 aiogram
-aiosqlite
 groq
 python-pptx
+aiosqlite
 pypdf
 python-docx
-aiohttp
-python-dotenv
