@@ -21,7 +21,7 @@ from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
-
+from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
 # Fayllarni o'qish uchun kutubxonalar
 import pypdf
 from docx import Document
@@ -376,8 +376,12 @@ def create_ultra_modern_pptx(topic, json_data, uid):
             bg.line.fill.background()
 
             # GEOMETRIK DEKORATSIYALAR
-            # 1. Chap tomonda diagonal chiziq - add_line() metodidan foydalanish
-            line1 = slide.shapes.add_line(Inches(0), Inches(2), Inches(4), Inches(0))
+            # 1. Chap tomonda diagonal chiziq - TO'G'RI USUL
+            line1 = slide.shapes.add_connector(
+                MSO_CONNECTOR.STRAIGHT, 
+                Inches(0), Inches(2), 
+                Inches(4), Inches(0)
+            )
             line1.line.color.rgb = ACCENT_NEON
             line1.line.width = Pt(2)
             
@@ -580,6 +584,7 @@ def create_ultra_modern_pptx(topic, json_data, uid):
     except Exception as e:
         logger.error(f"PPTX Generator Error: {e}", exc_info=True)
         return None
+
 
 # --- 7. HANDLERLAR ---
 
