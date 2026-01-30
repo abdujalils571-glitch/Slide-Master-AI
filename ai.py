@@ -376,11 +376,10 @@ def create_ultra_modern_pptx(topic, json_data, uid):
             bg.line.fill.background()
 
             # GEOMETRIK DEKORATSIYALAR
-            # 1. Chap tomonda diagonal chiziq
-            line1 = slide.shapes.add_shape(MSO_SHAPE.LINE, Inches(0), Inches(2), Inches(4), Inches(0))
+            # 1. Chap tomonda diagonal chiziq - add_line() metodidan foydalanish
+            line1 = slide.shapes.add_line(Inches(0), Inches(2), Inches(4), Inches(0))
             line1.line.color.rgb = ACCENT_NEON
             line1.line.width = Pt(2)
-            line1.rotation = -15
             
             # 2. O'ng tomonda nuqtalar
             for i in range(5):
@@ -998,12 +997,20 @@ async def generate_ppt(callback: CallbackQuery, state: FSMContext):
 async def main():
     await db.init()
     os.makedirs("slides", exist_ok=True)
+    try: 
+        await bot.delete_webhook(drop_pending_updates=True)
+        logger.info("✅ Bot ishga tushdi. Polling rejimida ishlamoqda...")
+    except Exception as e:
+        logger.warning(f"⚠️ Webhook o'chirishda xato: {e}")
     
-    # MUHIM: Mana shu qator bo'lishi shart!
-    await start_web_server() 
-    
+    # Polling rejimida botni ishga tushirish
+    logger.info("🔄 Bot polling rejimida ishga tushmoqda...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    try: asyncio.run(main())
-    except KeyboardInterrupt: pass
+    try: 
+        asyncio.run(main())
+    except KeyboardInterrupt: 
+        logger.info("🛑 Bot to'xtatildi (KeyboardInterrupt)")
+    except Exception as e:
+        logger.error(f"❌ Kutilmagan xato: {e}", exc_info=True)
