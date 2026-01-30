@@ -638,7 +638,8 @@ async def main_handler(message: types.Message, state: FSMContext):
     ], resize_keyboard=True)
     
     await message.answer(promo, reply_markup=kb, parse_mode="Markdown")
-    elif text == btns[3]: # Quiz Test (YANGI)
+  
+    elif text == btns[3]: 
         kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=get_text(l, 'cancel'))]], resize_keyboard=True)
         await message.answer(get_text(l, 'quiz_prompt'), reply_markup=kb, parse_mode="Markdown")
         await state.set_state(UserStates.waiting_for_quiz_file)
