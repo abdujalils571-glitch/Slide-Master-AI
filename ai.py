@@ -431,12 +431,13 @@ def create_ultra_modern_pptx(topic, json_data, uid):
             main_container.fill.fore_color.rgb = CARD_BG
             main_container.line.color.rgb = ACCENT_NEON
             main_container.line.width = Pt(1.5)
+            
+            # SOYA SOZLAMALARI (TUZATILDI)
             main_container.shadow.inherit = False
             main_container.shadow.blur_radius = Pt(10)
             main_container.shadow.offset_x = Pt(2)
             main_container.shadow.offset_y = Pt(2)
-            main_container.shadow.color.rgb = RGBColor(0, 0, 0)
-
+            # main_container.shadow.color.rgb = RGBColor(0, 0, 0)  <-- BU QATOR O'CHIRILDI
             # KONTEYNER ICHIDAGI KONTENT
             content_tf = main_container.text_frame
             content_tf.word_wrap = True
