@@ -639,7 +639,7 @@ async def main_handler(message: types.Message, state: FSMContext):
     
     await message.answer(promo, reply_markup=kb, parse_mode="Markdown")
   
-    elif text == btns[3]: 
+    if text == btns[3]: 
         kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=get_text(l, 'cancel'))]], resize_keyboard=True)
         await message.answer(get_text(l, 'quiz_prompt'), reply_markup=kb, parse_mode="Markdown")
         await state.set_state(UserStates.waiting_for_quiz_file)
