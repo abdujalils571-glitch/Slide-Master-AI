@@ -848,13 +848,13 @@ async def main_handler(message: types.Message, state: FSMContext):
         status = "⭐ VIP PREMIUM" if user['is_premium'] else "👤 Oddiy"
         msg = (f"📊 **SHAXSIY KABINET**\n\n👤 Ism: {user['first_name']}\n🆔 ID: `{uid}`\n💰 Balans: **{user['balance']} slayd**\n🏷 Status: **{status}**")
         await message.answer(msg, parse_mode="Markdown")
-    # main_handler ichida taklif qilish bo'limi
-elif text == btns[2]: # Taklif
-    bot_info = await bot.get_me()
-    link = f"https://t.me/{bot_info.username}?start={uid}"
+       # main_handler ichida taklif qilish bo'limi
+    elif text == btns[2]: # Taklif
+        bot_info = await bot.get_me()
+        link = f"https://t.me/{bot_info.username}?start={uid}"
     
-    # YANGI MARKETING MATNI
-    promo = f"""🎁 **DO'STLARINGIZNI TAKLIF QILING VA BONUS OLING!**
+        # YANGI MARKETING MATNI
+        promo = f"""🎁 **DO'STLARINGIZNI TAKLIF QILING VA BONUS OLING!**
 
 🔥 Har bir taklif qilingan do'st uchun **+1 BEPUL SLAYD**!
 💰 Sizning hisobingizga avtomatik ravishda qo'shiladi.
