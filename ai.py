@@ -998,8 +998,10 @@ async def generate_ppt(callback: CallbackQuery, state: FSMContext):
 async def main():
     await db.init()
     os.makedirs("slides", exist_ok=True)
-    try: await bot.delete_webhook(drop_pending_updates=True)
-    except: pass
+    
+    # MUHIM: Mana shu qator bo'lishi shart!
+    await start_web_server() 
+    
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
