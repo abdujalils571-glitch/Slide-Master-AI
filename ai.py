@@ -351,161 +351,227 @@ def create_ultra_modern_pptx(topic, json_data, uid):
         data = json.loads(cleaned_json)
 
         prs = Presentation()
-        prs.slide_width = Inches(13.333) # 16:9 keng format
+        prs.slide_width = Inches(13.333)  # 16:9 keng format
         prs.slide_height = Inches(7.5)
 
-        BG_COLOR = RGBColor(10, 15, 25)
-        ACCENT_CYAN = RGBColor(0, 210, 255)
-        ACCENT_GOLD = RGBColor(255, 190, 0)
-        TEXT_WHITE = RGBColor(250, 250, 250)
-        TEXT_GRAY = RGBColor(180, 190, 210)
-        CARD_BG = RGBColor(25, 35, 50)
+        # YANGI ZAMONAVIY RANG PALITRASI
+        BG_COLOR = RGBColor(13, 17, 23)      # To'q kosmik ko'k
+        ACCENT_NEON = RGBColor(0, 247, 255)  # Neon moviy
+        ACCENT_CORAL = RGBColor(255, 95, 109) # Korall qizil
+        ACCENT_LIME = RGBColor(202, 255, 112) # Yashil-limon
+        TEXT_WHITE = RGBColor(245, 247, 250) # Sof oq
+        TEXT_GRAY = RGBColor(170, 180, 200)  # Kulrang
+        CARD_BG = RGBColor(22, 27, 34)       # Kartalar fon
+        GRADIENT_START = RGBColor(30, 40, 60) # Gradient boshlanish
+        GRADIENT_END = RGBColor(15, 20, 30)   # Gradient tugashi
 
         for idx, s_data in enumerate(data.get('slides', [])):
             slide = prs.slides.add_slide(prs.slide_layouts[6])
 
+            # GRADIENT FON
             bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
-            bg.fill.solid()
-            bg.fill.fore_color.rgb = BG_COLOR
+            bg.fill.gradient()
+            bg.fill.gradient_stops[0].color.rgb = GRADIENT_START
+            bg.fill.gradient_stops[1].color.rgb = GRADIENT_END
             bg.line.fill.background()
 
-            circle = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(10), Inches(-2), Inches(5), Inches(5))
-            circle.fill.solid()
-            circle.fill.fore_color.rgb = ACCENT_CYAN
-            circle.fill.transparency = 0.95
-            circle.line.fill.background()
+            # GEOMETRIK DEKORATSIYALAR
+            # 1. Chap tomonda diagonal chiziq
+            line1 = slide.shapes.add_shape(MSO_SHAPE.LINE, Inches(0), Inches(2), Inches(4), Inches(0))
+            line1.line.color.rgb = ACCENT_NEON
+            line1.line.width = Pt(2)
+            line1.rotation = -15
+            
+            # 2. O'ng tomonda nuqtalar
+            for i in range(5):
+                dot = slide.shapes.add_shape(MSO_SHAPE.OVAL, 
+                    Inches(11 + i*0.3), Inches(0.5 + i*0.5), 
+                    Inches(0.1), Inches(0.1))
+                dot.fill.solid()
+                dot.fill.fore_color.rgb = ACCENT_CORAL
+                dot.line.fill.background()
 
-            title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(12), Inches(1.2))
+            # SARDALHA - YANGI DIZAYN
+            title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.4), Inches(12), Inches(1.2))
             tf = title_box.text_frame
             tf.word_wrap = True
             p = tf.paragraphs[0]
             p.text = s_data.get('title', topic).upper()
-            p.font.size = Pt(32)
+            p.font.size = Pt(36)  # Kattaroq shrift
             p.font.bold = True
-            p.font.color.rgb = ACCENT_CYAN
-            p.font.name = "Arial Black"
+            p.font.color.rgb = TEXT_WHITE
+            p.font.name = "Calibri"
+            
+            # Sarlavha ostidagi dekorativ chiziq
+            title_line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 
+                Inches(0.5), Inches(1.3), Inches(3), Inches(0.08))
+            title_line.fill.solid()
+            title_line.fill.fore_color.rgb = ACCENT_NEON
+            title_line.line.fill.background()
 
+            # SUBTITLE (agar mavjud bo'lsa)
             sub = s_data.get('subtitle', '')
             if sub:
-                sub_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.0), Inches(12), Inches(0.5))
+                sub_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(10), Inches(0.5))
                 sp = sub_box.text_frame.paragraphs[0]
                 sp.text = sub
-                sp.font.size = Pt(14)
+                sp.font.size = Pt(16)
                 sp.font.italic = True
-                sp.font.color.rgb = TEXT_GRAY
+                sp.font.color.rgb = ACCENT_LIME
 
-            line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(1.6), Inches(12.33), Inches(0.02))
-            line.fill.solid()
-            line.fill.fore_color.rgb = ACCENT_GOLD
-            line.line.fill.background()
-
-            main_card = slide.shapes.add_shape(
+            # ASOSIY KONTEYNER - YANGI DIZAYN
+            main_container = slide.shapes.add_shape(
                 MSO_SHAPE.ROUNDED_RECTANGLE, 
-                Inches(0.5), Inches(1.8), Inches(8.0), Inches(5.0)
+                Inches(0.5), Inches(2.0), Inches(8.5), Inches(4.8)
             )
-            main_card.fill.solid()
-            main_card.fill.fore_color.rgb = CARD_BG
-            main_card.line.color.rgb = RGBColor(40, 55, 75)
-            main_card.line.width = Pt(1)
+            main_container.fill.solid()
+            main_container.fill.fore_color.rgb = CARD_BG
+            main_container.line.color.rgb = ACCENT_NEON
+            main_container.line.width = Pt(1.5)
+            main_container.shadow.inherit = False
+            main_container.shadow.blur_radius = Pt(10)
+            main_container.shadow.offset_x = Pt(2)
+            main_container.shadow.offset_y = Pt(2)
+            main_container.shadow.color.rgb = RGBColor(0, 0, 0)
 
-            content_tf = main_card.text_frame
+            # KONTEYNER ICHIDAGI KONTENT
+            content_tf = main_container.text_frame
             content_tf.word_wrap = True
-            content_tf.margin_left = Inches(0.2)
-            content_tf.margin_top = Inches(0.2)
+            content_tf.margin_left = Inches(0.25)
+            content_tf.margin_top = Inches(0.25)
+            content_tf.margin_right = Inches(0.25)
+            content_tf.margin_bottom = Inches(0.25)
             
             points = s_data.get('content', [])
             if isinstance(points, list) and points and isinstance(points[0], str):
                 temp = []
-                for t in points: temp.append({'bold': 'Muhim', 'text': t})
+                for t in points: 
+                    temp.append({'bold': 'Asosiy', 'text': t})
                 points = temp
 
             for i, point in enumerate(points):
-                if i == 0: p = content_tf.paragraphs[0]
-                else: p = content_tf.add_paragraph()
+                if i == 0: 
+                    p = content_tf.paragraphs[0]
+                else: 
+                    p = content_tf.add_paragraph()
                 
+                # ZAMONAVIY BULLET POINT
                 run_bullet = p.add_run()
-                run_bullet.text = "► "
-                run_bullet.font.color.rgb = ACCENT_GOLD
-                run_bullet.font.size = Pt(14)
+                run_bullet.text = "◆ "
+                run_bullet.font.color.rgb = ACCENT_CORAL
+                run_bullet.font.size = Pt(18)
+                run_bullet.font.bold = True
 
                 bold_txt = point.get('bold', '')
                 if bold_txt:
                     run_bold = p.add_run()
                     run_bold.text = f"{bold_txt}: "
                     run_bold.font.bold = True
-                    run_bold.font.color.rgb = ACCENT_CYAN
-                    run_bold.font.size = Pt(16)
+                    run_bold.font.color.rgb = ACCENT_LIME
+                    run_bold.font.size = Pt(18)
 
                 run_main = p.add_run()
                 run_main.text = point.get('text', '')
                 run_main.font.color.rgb = TEXT_WHITE
-                run_main.font.size = Pt(16)
-                p.space_after = Pt(14)
+                run_main.font.size = Pt(18)
+                p.space_after = Pt(16)
+                p.line_spacing = 1.2
 
+            # STATISTIKA BLOGI - YANGI DIZAYN
             stat_val = s_data.get('stat', '')
             if stat_val:
-                stat_bg = slide.shapes.add_shape(
-                    MSO_SHAPE.RECTANGLE, Inches(8.8), Inches(1.8), Inches(4.0), Inches(1.5)
+                # Statistikani o'rab turuvchi dekorativ ramka
+                stat_decor = slide.shapes.add_shape(
+                    MSO_SHAPE.ROUNDED_RECTANGLE, 
+                    Inches(9.2), Inches(2.0), Inches(3.5), Inches(2.0)
                 )
-                stat_bg.fill.solid()
-                stat_bg.fill.fore_color.rgb = RGBColor(13, 25, 45)
-                stat_bg.line.color.rgb = ACCENT_CYAN
+                stat_decor.fill.solid()
+                stat_decor.fill.fore_color.rgb = RGBColor(30, 35, 42)
+                stat_decor.line.color.rgb = ACCENT_CORAL
+                stat_decor.line.width = Pt(2)
+                stat_decor.line.dash_style = 2  # Chiziqli
                 
-                stf = stat_bg.text_frame
-                stf.vertical_anchor = MSO_ANCHOR.MIDDLE
-                p_st = stf.paragraphs[0]
-                p_st.text = str(stat_val)
-                p_st.font.size = Pt(28)
-                p_st.font.bold = True
-                p_st.font.color.rgb = ACCENT_CYAN
-                p_st.alignment = PP_ALIGN.CENTER
+                # Statistik qiymat
+                stat_box = slide.shapes.add_textbox(Inches(9.3), Inches(2.3), Inches(3.3), Inches(1.0))
+                stat_tf = stat_box.text_frame
+                stat_tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+                p_stat = stat_tf.paragraphs[0]
+                p_stat.text = str(stat_val)
+                p_stat.font.size = Pt(42)
+                p_stat.font.bold = True
+                p_stat.font.color.rgb = ACCENT_NEON
+                p_stat.alignment = PP_ALIGN.CENTER
                 
-                lbl_box = slide.shapes.add_textbox(Inches(8.8), Inches(2.9), Inches(4.0), Inches(0.4))
-                lbl_p = lbl_box.text_frame.paragraphs[0]
-                lbl_p.text = "MUHIM KO'RSATKICH"
-                lbl_p.font.size = Pt(9)
-                lbl_p.font.color.rgb = TEXT_GRAY
-                lbl_p.alignment = PP_ALIGN.CENTER
+                # Statistik sarlavha
+                stat_label = slide.shapes.add_textbox(Inches(9.3), Inches(3.5), Inches(3.3), Inches(0.5))
+                label_p = stat_label.text_frame.paragraphs[0]
+                label_p.text = "📊 ASOSIY KO'RSATKICH"
+                label_p.font.size = Pt(11)
+                label_p.font.color.rgb = TEXT_GRAY
+                label_p.alignment = PP_ALIGN.CENTER
 
+            # INSIGHT BLOGI - YANGI DIZAYN
             insight_val = s_data.get('insight', '')
             if insight_val:
-                ins_bg = slide.shapes.add_shape(
-                    MSO_SHAPE.ROUNDED_RECTANGLE, Inches(8.8), Inches(3.5), Inches(4.0), Inches(3.3)
+                insight_bg = slide.shapes.add_shape(
+                    MSO_SHAPE.ROUNDED_RECTANGLE, 
+                    Inches(9.2), Inches(4.2), Inches(3.5), Inches(2.6)
                 )
-                ins_bg.fill.solid()
-                ins_bg.fill.fore_color.rgb = RGBColor(20, 30, 40)
-                ins_bg.line.color.rgb = ACCENT_GOLD
+                insight_bg.fill.solid()
+                insight_bg.fill.fore_color.rgb = RGBColor(25, 30, 40)
+                insight_bg.line.color.rgb = ACCENT_LIME
+                insight_bg.line.width = Pt(1.5)
                 
-                itf = ins_bg.text_frame
+                # Insight sarlavhasi
+                insight_header = slide.shapes.add_textbox(Inches(9.3), Inches(4.3), Inches(3.3), Inches(0.4))
+                ih_p = insight_header.text_frame.paragraphs[0]
+                ih_p.text = "💡 STRATEGIK TAVSIYA"
+                ih_p.font.size = Pt(14)
+                ih_p.font.bold = True
+                ih_p.font.color.rgb = ACCENT_LIME
+                
+                # Insight matni
+                insight_text = slide.shapes.add_textbox(Inches(9.3), Inches(4.7), Inches(3.3), Inches(1.8))
+                itf = insight_text.text_frame
                 itf.word_wrap = True
-                itf.margin_left = Inches(0.15)
-                
-                pi_head = itf.paragraphs[0]
-                pi_head.text = "💡 STRATEGIK XULOSA"
-                pi_head.font.size = Pt(12)
-                pi_head.font.bold = True
-                pi_head.font.color.rgb = ACCENT_GOLD
-                pi_head.space_after = Pt(10)
-                
-                pi_body = itf.add_paragraph()
-                pi_body.text = insight_val
-                pi_body.font.size = Pt(14)
-                pi_body.font.italic = True
-                pi_body.font.color.rgb = TEXT_WHITE
+                it_p = itf.paragraphs[0]
+                it_p.text = insight_val
+                it_p.font.size = Pt(15)
+                it_p.font.italic = True
+                it_p.font.color.rgb = TEXT_WHITE
+                it_p.line_spacing = 1.3
 
-            ft_box = slide.shapes.add_textbox(Inches(0.5), Inches(7.0), Inches(5), Inches(0.4))
-            ft = ft_box.text_frame.paragraphs[0]
-            ft.text = f"Slide Master AI | {time.strftime('%Y-%m-%d')}"
-            ft.font.size = Pt(10)
-            ft.font.color.rgb = TEXT_GRAY
-
-            pg_box = slide.shapes.add_textbox(Inches(12), Inches(7.0), Inches(1), Inches(0.4))
-            pg = pg_box.text_frame.paragraphs[0]
-            pg.text = f"{idx + 1}"
-            pg.font.size = Pt(12)
-            pg.font.bold = True
-            pg.font.color.rgb = ACCENT_CYAN
-            pg.alignment = PP_ALIGN.RIGHT
+            # FOOTER - YANGI DIZAYN
+            footer_bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 
+                0, prs.slide_height - Inches(0.6), prs.slide_width, Inches(0.6))
+            footer_bg.fill.solid()
+            footer_bg.fill.fore_color.rgb = RGBColor(20, 25, 35)
+            footer_bg.line.fill.background()
+            
+            # Chap tomonda kompaniya nomi
+            company_box = slide.shapes.add_textbox(Inches(0.5), prs.slide_height - Inches(0.5), Inches(4), Inches(0.4))
+            company_p = company_box.text_frame.paragraphs[0]
+            company_p.text = "Slide Master AI"
+            company_p.font.size = Pt(12)
+            company_p.font.bold = True
+            company_p.font.color.rgb = ACCENT_NEON
+            
+            # O'rtada sanani korsatish
+            date_box = slide.shapes.add_textbox(Inches(6), prs.slide_height - Inches(0.5), Inches(2), Inches(0.4))
+            date_p = date_box.text_frame.paragraphs[0]
+            date_p.text = time.strftime('%Y-%m-%d')
+            date_p.font.size = Pt(11)
+            date_p.font.color.rgb = TEXT_GRAY
+            date_p.alignment = PP_ALIGN.CENTER
+            
+            # O'ng tomonda slayd raqami
+            slide_num_box = slide.shapes.add_textbox(Inches(11.5), prs.slide_height - Inches(0.5), Inches(1.5), Inches(0.4))
+            slide_num_p = slide_num_box.text_frame.paragraphs[0]
+            slide_num_p.text = f"SLIDE {idx + 1}"
+            slide_num_p.font.size = Pt(12)
+            slide_num_p.font.bold = True
+            slide_num_p.font.color.rgb = ACCENT_CORAL
+            slide_num_p.alignment = PP_ALIGN.RIGHT
 
         os.makedirs("slides", exist_ok=True)
         path = f"slides/Pro_Presentation_{uid}_{int(time.time())}.pptx"
@@ -782,12 +848,31 @@ async def main_handler(message: types.Message, state: FSMContext):
         status = "⭐ VIP PREMIUM" if user['is_premium'] else "👤 Oddiy"
         msg = (f"📊 **SHAXSIY KABINET**\n\n👤 Ism: {user['first_name']}\n🆔 ID: `{uid}`\n💰 Balans: **{user['balance']} slayd**\n🏷 Status: **{status}**")
         await message.answer(msg, parse_mode="Markdown")
-    elif text == btns[2]: # Taklif
-        bot_info = await bot.get_me()
-        link = f"https://t.me/{bot_info.username}?start={uid}"
-        promo = MARKETING_TEXT + f"`{link}`"
-        kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📤 Ulashish")],[KeyboardButton(text=get_text(l, 'cancel'))]], resize_keyboard=True)
-        await message.answer(promo, reply_markup=kb, parse_mode="Markdown")
+    # main_handler ichida taklif qilish bo'limi
+elif text == btns[2]: # Taklif
+    bot_info = await bot.get_me()
+    link = f"https://t.me/{bot_info.username}?start={uid}"
+    
+    # YANGI MARKETING MATNI
+    promo = f"""🎁 **DO'STLARINGIZNI TAKLIF QILING VA BONUS OLING!**
+
+🔥 Har bir taklif qilingan do'st uchun **+1 BEPUL SLAYD**!
+💰 Sizning hisobingizga avtomatik ravishda qo'shiladi.
+
+📲 Do'stlaringizga shu havolani yuboring:
+
+`{link}`
+
+✅ Do'stingiz ro'yxatdan o'tgach, sizning hisobingizga darhol +1 slayd qo'shiladi!
+
+✨ **Bonuslar cheksiz!** Qancha ko'p do'st taklif qilsangiz, shuncha ko'p bepul slaydlar olasiz!"""
+    
+    kb = ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="📤 Ulashish", request_contact=False)],
+        [KeyboardButton(text=get_text(l, 'cancel'))]
+    ], resize_keyboard=True)
+    
+    await message.answer(promo, reply_markup=kb, parse_mode="Markdown")
     elif text == btns[3]: # Quiz Test (YANGI)
         kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=get_text(l, 'cancel'))]], resize_keyboard=True)
         await message.answer(get_text(l, 'quiz_prompt'), reply_markup=kb, parse_mode="Markdown")
@@ -796,8 +881,25 @@ async def main_handler(message: types.Message, state: FSMContext):
         ikb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="lang_uz")], [InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru")], [InlineKeyboardButton(text="🇬🇧 English", callback_data="lang_en")]])
         await message.answer("Tilni tanlang / Select language:", reply_markup=ikb)
     elif text == "📤 Ulashish":
-        bot_info = await bot.get_me()
-        await message.answer(f"🔗 Link: `https://t.me/{bot_info.username}?start={uid}`", parse_mode="Markdown")
+    bot_info = await bot.get_me()
+    link = f"https://t.me/{bot_info.username}?start={uid}"
+    
+    # Havolani tezkor nusxa olish uchun tayyor formatda berish
+    share_text = f"""🎯 **Slide Master AI - Professional Prezentatsiyalar Boti**
+
+🤖 Sun'iy intellekt yordamida 60 soniyada tayyor prezentatsiyalar!
+✅ 3 xil tilda (O'zbek, Rus, Ingliz)
+✅ Professional dizayn
+✅ PowerPoint formatida
+
+👉 Boshlash uchun: {link}
+
+✨ Do'stlaringizga ulashing va bonuslar oling!"""
+    
+    await message.answer(share_text, parse_mode="Markdown")
+    
+    # Havolani alohida ham berish
+    await message.answer(f"🔗 **Havola:** `{link}`\n\n📋 *Havolani nusxalash uchun ustiga bosing*", parse_mode="Markdown")
     elif text == get_text(l, 'cancel'):
         await state.clear()
         await show_main_menu(message, l)
